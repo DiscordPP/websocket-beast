@@ -25,7 +25,7 @@ namespace discordpp {
 
         virtual void run() {
             json gateway = call("GET", "/gateway/bot");
-            const std::string url = gateway["url"].get<std::string>()
+            const std::string url = gateway["url"].get<std::string>() + "/"
                                     + "?v=" + std::to_string(apiVersion)
                                     + "&encoding=json";
 
