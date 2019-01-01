@@ -19,7 +19,7 @@ namespace discordpp {
         }
 
     public:
-        virtual void send(int opcode, json payload) {
+        void send(int opcode, json payload) override {
             ws_->write(boost::asio::buffer(json({{"op", opcode}, {"d",  payload}}).dump()));
         };
 
