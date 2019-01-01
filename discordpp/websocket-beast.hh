@@ -23,7 +23,8 @@ namespace discordpp {
             ws_->write(boost::asio::buffer(json({{"op", opcode}, {"d",  payload}}).dump()));
         };
 
-        virtual void run() {
+    protected:
+        void runctd() override {
             json gateway = call("GET", "/gateway/bot");
             const std::string url = gateway["url"].get<std::string>() + "/"
                                     + "?v=" + std::to_string(apiVersion)
@@ -58,7 +59,7 @@ namespace discordpp {
                     }
             );
 
-            BASE::run();
+            BASE::runctd();
         }
     };
 }
