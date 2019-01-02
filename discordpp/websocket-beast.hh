@@ -6,11 +6,12 @@
 #define DISCORDPP_WEBSOCKET_BEAST_HH
 
 #include <boost/beast.hpp>
+#include <boost/beast/websocket/ssl.hpp>
 
 namespace discordpp {
     template<class BASE>
     class WebsocketBeast : public BASE, virtual BotStruct {
-        std::unique_ptr<boost::beast::websocket::stream<tcp::socket>> ws_;
+        std::unique_ptr<boost::beast::websocket::stream<ssl::stream<tcp::socket>>> ws_;
         boost::beast::multi_buffer buffer_;
 
         // Report a failure
@@ -30,15 +31,21 @@ namespace discordpp {
                                     + "?v=" + std::to_string(apiVersion)
                                     + "&encoding=json";
 
+            // The SSL context is required, and holds certificates
+            ssl::context ctx{ssl::context::tlsv12};
+
             // These objects perform our I/O
             tcp::resolver resolver{*aioc};
-            ws_ = std::make_unique<boost::beast::websocket::stream<tcp::socket>>(*aioc);
+            ws_ = std::make_unique<boost::beast::websocket::stream<ssl::stream<tcp::socket>>>(*aioc, ctx);
 
             // Look up the domain name
-            auto const results = resolver.resolve(url);
+            auto const results = resolver.resolve(url, "443");
 
             // Make the connection on the IP address we get from a lookup
-            boost::asio::connect(ws_->next_layer(), results.begin(), results.end());
+            boost::asio::connect(ws_->next_layer().next_layer(), results.begin(), results.end());
+
+            // Perform the SSL handshake
+            ws_->next_layer().handshake(ssl::stream_base::client);
 
             // Perform the websocket handshake
             ws_->handshake(url, "/");
