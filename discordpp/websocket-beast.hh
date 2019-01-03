@@ -22,9 +22,7 @@ namespace discordpp {
 
     public:
         void send(int opcode, json payload) override {
-            json tosend = json({{"op", opcode}, {"d", payload}});
-            std::cerr << tosend.dump();
-            ws_->write(boost::asio::buffer(tosend.dump()));
+            ws_->write(boost::asio::buffer(json({{"op", opcode}, {"d", payload}}).dump()));
         };
 
     protected:
