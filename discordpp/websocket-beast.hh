@@ -66,7 +66,7 @@ namespace discordpp {
             ws_ = std::make_unique<boost::beast::websocket::stream<ssl::stream<tcp::socket>>>(*aioc, ctx);
 
             // Look up the domain name
-            std::cerr << gateway.dump(4) << url << std::endl;
+            //std::cerr << gateway.dump(4) << url << std::endl;
             auto const results = resolver.resolve(url, "443");
 
             // Make the connection on the IP address we get from a lookup
