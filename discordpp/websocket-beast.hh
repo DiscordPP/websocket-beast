@@ -2,8 +2,7 @@
 // Created by Aidan on 6/20/2018.
 //
 
-#ifndef DISCORDPP_WEBSOCKET_BEAST_HH
-#define DISCORDPP_WEBSOCKET_BEAST_HH
+#pragma once
 
 #include <boost/beast.hpp>
 #include <boost/beast/websocket/ssl.hpp>
@@ -92,5 +91,3 @@ namespace discordpp {
         }
     };
 }
-
-#endif //DISCORDPP_WEBSOCKET_BEAST_HH
