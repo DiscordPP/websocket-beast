@@ -33,7 +33,13 @@ namespace discordpp {
             json jres;
             {
                 std::ostringstream ss;
+
+#if BOOST_VERSION >= 107000
+                ss << boost::beast::make_printable(buffer_.data());
+#else
                 ss << boost::beast::buffers(buffer_.data());
+#endif
+				
                 buffer_.consume(buffer_.size());
                 //std::cerr << "Got " << ss.str() << '\n';
                 jres = json::parse(ss.str());
