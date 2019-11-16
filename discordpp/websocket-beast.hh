@@ -45,7 +45,7 @@ namespace discordpp {
                 jres = json::parse(ss.str());
             }
 
-	        receivePayload(jres);
+	        recievePayload(jres);
 
             ws_->async_read(
                     buffer_,
