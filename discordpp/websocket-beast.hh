@@ -7,26 +7,27 @@
 #include <boost/beast.hpp>
 #include <boost/beast/websocket/ssl.hpp>
 
-namespace discordpp {
+namespace discordpp{
     template<class BASE>
-    class WebsocketBeast : public BASE, virtual BotStruct {
+    class WebsocketBeast: public BASE, virtual BotStruct{
         std::unique_ptr<boost::beast::websocket::stream<ssl::stream < tcp::socket>>>
         ws_;
         boost::beast::multi_buffer buffer_;
 
         // Report a failure
-        void fail(boost::system::error_code ec, char const *what) {
+        void fail(boost::system::error_code ec, char const *what){
             std::cerr << what << ": " << ec.message() << "\n";
         }
 
     public:
-        void send(int opcode, json payload) override {
-            ws_->write(boost::asio::buffer(json({{"op", opcode}, {"d", payload}}).dump()));
+        void send(int opcode, json payload) override{
+            ws_->write(boost::asio::buffer(json({{"op", opcode},
+                                                 {"d",  payload}}).dump()));
         };
 
     protected:
-        void on_read(boost::system::error_code ec, std::size_t /*bytes_transferred*/) {
-            if (ec) {
+        void on_read(boost::system::error_code ec, std::size_t /*bytes_transferred*/){
+            if(ec){
                 return fail(ec, "read");
             }
 
@@ -39,23 +40,23 @@ namespace discordpp {
 #else
                 ss << boost::beast::buffers(buffer_.data());
 #endif
-				
+
                 buffer_.consume(buffer_.size());
                 //std::cerr << "Got " << ss.str() << '\n';
                 jres = json::parse(ss.str());
             }
 
-	        recievePayload(jres);
+            recievePayload(jres);
 
             ws_->async_read(
                     buffer_,
-                    [this](boost::system::error_code ec, std::size_t bytes_transferred) {
+                    [this](boost::system::error_code ec, std::size_t bytes_transferred){
                         on_read(ec, bytes_transferred);
                     }
             );
         }
 
-        void runctd() override {
+        void runctd() override{
             json gateway = call("GET", "/gateway/bot");
             const std::string url = gateway["url"].get<std::string>().substr(6);
             /*
@@ -88,7 +89,7 @@ namespace discordpp {
 
             ws_->async_read(
                     buffer_,
-                    [this](boost::system::error_code ec, std::size_t bytes_transferred) {
+                    [this](boost::system::error_code ec, std::size_t bytes_transferred){
                         on_read(ec, bytes_transferred);
                     }
             );
