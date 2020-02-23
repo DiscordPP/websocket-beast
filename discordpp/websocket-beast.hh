@@ -10,8 +10,7 @@
 namespace discordpp{
 	template<class BASE>
 	class WebsocketBeast: public BASE, virtual BotStruct{
-		std::unique_ptr<boost::beast::websocket::stream<ssl::stream < tcp::socket>>>
-		ws_;
+		std::unique_ptr<boost::beast::websocket::stream<ssl::stream < tcp::socket>>> ws_;
 		boost::beast::multi_buffer buffer_;
 
 		// Report a failure
@@ -20,8 +19,7 @@ namespace discordpp{
 		}
 
 	public:
-		virtual void
-		send(const int opcode, sptr<const json> payload, sptr<const std::function<void()>> callback) override{
+		virtual void send(const int opcode, sptr<const json> payload, sptr<const std::function<void()>> callback) override{
 			ws_->write(boost::asio::buffer(json({
 					{"op", opcode},
 					{"d",  ((payload == nullptr)?json():*payload)}
@@ -41,14 +39,9 @@ namespace discordpp{
 			{
 				std::ostringstream ss;
 
-#if BOOST_VERSION >= 107000
 				ss << boost::beast::make_printable(buffer_.data());
-#else
-				ss << boost::beast::buffers(buffer_.data());
-#endif
 
 				buffer_.consume(buffer_.size());
-				//std::cerr << "Got " << ss.str() << '\n';
 				jres = json::parse(ss.str());
 			}
 
@@ -70,10 +63,6 @@ namespace discordpp{
 					std::make_shared<const std::function<void(const json)>>([this](const json& gateway){
 						std::cerr << gateway.dump(2) << std::endl;
 						const std::string url = gateway["url"].get<std::string>().substr(6);
-						/*
-						 *  + "/"
-												+ "?v=" + std::to_string(apiVersion)
-												+ "&encoding=json"*/
 
 						// The SSL context is required, and holds certificates
 						ssl::context ctx{ssl::context::tlsv12};
@@ -83,7 +72,6 @@ namespace discordpp{
 						ws_ = std::make_unique<boost::beast::websocket::stream<ssl::stream<tcp::socket>>>(*aioc, ctx);
 
 						// Look up the domain name
-						//std::cerr << gateway.dump(4) << url << std::endl;
 						auto const results = resolver.resolve(url, "443");
 
 						// Make the connection on the IP address we get from a lookup
