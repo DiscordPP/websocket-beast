@@ -71,7 +71,7 @@ namespace discordpp{
 					std::make_shared<std::string>("GET"),
 					std::make_shared<std::string>("/gateway/bot"),
 					nullptr,
-					std::make_shared<const std::function<void(const json)>>([this, &then](const json& gateway){
+					std::make_shared<const std::function<void(const json)>>([this, then](const json& gateway){
 						connecting = false;
 						std::cerr << gateway.dump(2) << std::endl;
 						const std::string url = gateway["url"].get<std::string>().substr(6);
