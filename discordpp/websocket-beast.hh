@@ -14,13 +14,6 @@ namespace discordpp{
 		virtual void
 		initBot(unsigned int apiVersionIn, const std::string &tokenIn, std::shared_ptr<boost::asio::io_context> aiocIn) override{
 			BASE::initBot(apiVersionIn, tokenIn, aiocIn);
-
-			// The SSL context is required, and holds certificates
-			ssl::context ctx{ssl::context::tlsv12};
-
-			// These objects perform our I/O
-			resolver_ = std::make_unique<tcp::resolver>(*aiocIn);
-			ws_ = std::make_unique<boost::beast::websocket::stream<ssl::stream<tcp::socket>>>(*aiocIn, ctx);
 		}
 
 		virtual void send(const int opcode, sptr<const json> payload, sptr<const std::function<void()>> callback) override{
@@ -66,11 +59,20 @@ namespace discordpp{
 		}
 
 		virtual void connect(const std::function<void ()>& then = [](){}) override {
+			// The SSL context is required, and holds certificates
+			ssl::context ctx{ssl::context::tlsv12};
+
+			// These objects perform our I/O
+			resolver_ = std::make_unique<tcp::resolver>(*aioc);
+			ws_ = std::make_unique<boost::beast::websocket::stream<ssl::stream<tcp::socket>>>(*aioc, ctx);
+
+			connecting = true;
 			call(
 					std::make_shared<std::string>("GET"),
 					std::make_shared<std::string>("/gateway/bot"),
 					nullptr,
 					std::make_shared<const std::function<void(const json)>>([this, &then](const json& gateway){
+						connecting = false;
 						std::cerr << gateway.dump(2) << std::endl;
 						const std::string url = gateway["url"].get<std::string>().substr(6);
 
@@ -99,6 +101,12 @@ namespace discordpp{
 						);
 					})
 			);
+		}
+
+		virtual void disconnect() override {
+			try{
+				ws_->close(boost::beast::websocket::close_code::normal);
+			}catch(...){};
 		}
 
 		private:
