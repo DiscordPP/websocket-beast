@@ -13,6 +13,8 @@ namespace discordpp{
 	public:
 		virtual void
 		initBot(unsigned int apiVersionIn, const std::string &tokenIn, std::shared_ptr<boost::asio::io_context> aiocIn) override{
+			BASE::initBot(apiVersionIn, tokenIn, aiocIn);
+
 			// The SSL context is required, and holds certificates
 			ssl::context ctx{ssl::context::tlsv12};
 
@@ -104,6 +106,7 @@ namespace discordpp{
 		// Report a failure
 		void fail(boost::system::error_code ec, char const *what){
 			std::cerr << what << ": " << ec.message() << "\n";
+			reconnect();
 		}
 
 		std::unique_ptr<boost::beast::websocket::stream<ssl::stream < tcp::socket>>> ws_;
