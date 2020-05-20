@@ -58,7 +58,7 @@ namespace discordpp{
 			BASE::runctd();
 		}
 
-		virtual void connect(const std::function<void ()>& then = [](){}) override {
+		virtual void connect() override {
 			// The SSL context is required, and holds certificates
 			ssl::context ctx{ssl::context::tlsv12};
 
@@ -71,7 +71,7 @@ namespace discordpp{
 					std::make_shared<std::string>("GET"),
 					std::make_shared<std::string>("/gateway/bot"),
 					nullptr,
-					std::make_shared<const std::function<void(const json)>>([this, then](const json& gateway){
+					std::make_shared<const std::function<void(const json)>>([this](const json& gateway){
 						connecting = false;
 						std::cerr << gateway.dump(2) << std::endl;
 						const std::string url = gateway["url"].get<std::string>().substr(6);
@@ -90,8 +90,6 @@ namespace discordpp{
 						                    "?v=" + std::to_string(apiVersion) +
 						                    "&encoding=json"
 						);
-
-						then();
 
 						ws_->async_read(
 								buffer_,
