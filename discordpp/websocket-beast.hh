@@ -17,10 +17,12 @@ namespace discordpp{
 		}
 
 		virtual void send(const int opcode, sptr<const json> payload, sptr<const std::function<void()>> callback) override{
-			ws_->write(boost::asio::buffer(json({
+			json out{
 					{"op", opcode},
 					{"d",  ((payload == nullptr)?json():*payload)}
-			}).dump()));
+			};
+			std::cout << "Sending: " << out.dump(4) << std::endl;
+			ws_->write(boost::asio::buffer(out.dump()));
 			if(callback != nullptr){
 				(*callback)();
 			}
