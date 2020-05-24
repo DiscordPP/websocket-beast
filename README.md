@@ -1,1 +1,1 @@
-# websocket-beast
+# WebSocket: Beast
