@@ -10,20 +10,19 @@
 namespace discordpp{
 	template<class BASE>
 	class WebsocketBeast: public BASE, virtual BotStruct{
-		std::unique_ptr<boost::beast::websocket::stream<ssl::stream < tcp::socket>>> ws_;
-		boost::beast::multi_buffer buffer_;
-
-		// Report a failure
-		void fail(boost::system::error_code ec, char const *what){
-			std::cerr << what << ": " << ec.message() << "\n";
+	public:
+		virtual void
+		initBot(unsigned int apiVersionIn, const std::string &tokenIn, std::shared_ptr<boost::asio::io_context> aiocIn) override{
+			BASE::initBot(apiVersionIn, tokenIn, aiocIn);
 		}
 
-	public:
 		virtual void send(const int opcode, sptr<const json> payload, sptr<const std::function<void()>> callback) override{
-			ws_->write(boost::asio::buffer(json({
+			json out{
 					{"op", opcode},
 					{"d",  ((payload == nullptr)?json():*payload)}
-			}).dump()));
+			};
+			std::cout << "Sending: " << out.dump(4) << std::endl;
+			ws_->write(boost::asio::buffer(out.dump()));
 			if(callback != nullptr){
 				(*callback)();
 			}
@@ -56,23 +55,31 @@ namespace discordpp{
 		}
 
 		void runctd() override{
+			connect();
+
+			BASE::runctd();
+		}
+
+		virtual void connect() override {
+			// The SSL context is required, and holds certificates
+			ssl::context ctx{ssl::context::tlsv12};
+
+			// These objects perform our I/O
+			resolver_ = std::make_unique<tcp::resolver>(*aioc);
+			ws_ = std::make_unique<boost::beast::websocket::stream<ssl::stream<tcp::socket>>>(*aioc, ctx);
+
+			connecting = true;
 			call(
 					std::make_shared<std::string>("GET"),
 					std::make_shared<std::string>("/gateway/bot"),
 					nullptr,
 					std::make_shared<const std::function<void(const json)>>([this](const json& gateway){
+						connecting = false;
 						std::cerr << gateway.dump(2) << std::endl;
 						const std::string url = gateway["url"].get<std::string>().substr(6);
 
-						// The SSL context is required, and holds certificates
-						ssl::context ctx{ssl::context::tlsv12};
-
-						// These objects perform our I/O
-						tcp::resolver resolver{*aioc};
-						ws_ = std::make_unique<boost::beast::websocket::stream<ssl::stream<tcp::socket>>>(*aioc, ctx);
-
 						// Look up the domain name
-						auto const results = resolver.resolve(url, "443");
+						auto const results = resolver_->resolve(url, "443");
 
 						// Make the connection on the IP address we get from a lookup
 						boost::asio::connect(ws_->next_layer().next_layer(), results.begin(), results.end());
@@ -94,8 +101,24 @@ namespace discordpp{
 						);
 					})
 			);
-
-			BASE::runctd();
 		}
+
+		virtual void disconnect() override {
+			try{
+				ws_->close(boost::beast::websocket::close_code::normal);
+			}catch(...){};
+		}
+
+		private:
+
+		// Report a failure
+		void fail(boost::system::error_code ec, char const *what){
+			std::cerr << what << ": " << ec.message() << "\n";
+			reconnect();
+		}
+
+		std::unique_ptr<boost::beast::websocket::stream<ssl::stream < tcp::socket>>> ws_;
+		boost::beast::multi_buffer buffer_;
+		std::unique_ptr<tcp::resolver> resolver_;
 	};
 }
