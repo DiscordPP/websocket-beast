@@ -16,7 +16,7 @@ namespace discordpp{
 			BASE::initBot(apiVersionIn, tokenIn, aiocIn);
 		}
 
-		virtual void send(const int opcode, sptr<const json> payload, sptr<const std::function<void()>> callback) override{
+		virtual void send(const int opcode, sptr<const json> payload, sptr<const handleSent> callback) override{
 			json out{
 					{"op", opcode},
 					{"d",  ((payload == nullptr)?json():*payload)}
@@ -73,7 +73,9 @@ namespace discordpp{
 					std::make_shared<std::string>("GET"),
 					std::make_shared<std::string>("/gateway/bot"),
 					nullptr,
-					std::make_shared<const std::function<void(const json)>>([this](const json& gateway){
+					nullptr,
+					std::make_shared<const handleRead>([this](const bool error, const json& gateway){
+						if(error) return;
 						connecting = false;
 						std::cerr << gateway.dump(2) << std::endl;
 						const std::string url = gateway["url"].get<std::string>().substr(6);
