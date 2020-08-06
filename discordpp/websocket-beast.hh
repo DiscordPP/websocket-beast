@@ -20,7 +20,11 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
                       sptr<const handleSent> callback) override {
         json out{{"op", opcode},
                  {"d", ((payload == nullptr) ? json() : *payload)}};
-        std::cout << "Sending: " << out.dump(4) << std::endl;
+	    
+        log::log(log::debug, [out](std::ostream *log) {
+		    *log << "Sending: " << out.dump(4) << '\n';
+	    });
+        
         ws_->write(boost::asio::buffer(out.dump()));
         if (callback != nullptr) {
             (*callback)();
