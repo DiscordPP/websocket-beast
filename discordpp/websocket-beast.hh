@@ -6,8 +6,37 @@
 
 #include <boost/beast.hpp>
 #include <boost/beast/websocket/ssl.hpp>
+#include <boost/certify/extensions.hpp>
+#include <boost/certify/https_verification.hpp>
+
+#include <nlohmann/json.hpp>
+
+#include <discordpp/botStruct.hh>
+#include <discordpp/log.hh>
 
 namespace discordpp {
+using json = nlohmann::json;
+namespace beast = boost::beast;   // from <boost/beast.hpp>
+namespace ssl = boost::asio::ssl; // from <boost/asio/ssl.hpp>
+using tcp = boost::asio::ip::tcp; // from <boost/asio/ip/tcp.hpp>
+
+#ifndef DPP_SSL_CTX
+#define DPP_SSL_CTX
+ssl::context &ctx() {
+    static ssl::context ctx_{ssl::context::tlsv13_client};
+    static bool init = false;
+    if (!init) {
+        init = true;
+        ctx_.set_verify_mode(ssl::context::verify_peer);
+        ctx_.set_default_verify_paths();
+        boost::certify::enable_native_https_server_verification(ctx_);
+    }
+    return ctx_;
+}
+#else
+ssl::context &ctx();
+#endif
+
 template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
   public:
     virtual void
@@ -20,11 +49,11 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
                       sptr<const handleSent> callback) override {
         json out{{"op", opcode},
                  {"d", ((payload == nullptr) ? json() : *payload)}};
-	    
+
         log::log(log::debug, [out](std::ostream *log) {
-		    *log << "Sending: " << out.dump(4) << '\n';
-	    });
-        
+            *log << "Sending: " << out.dump(4) << '\n';
+        });
+
         ws_->write(boost::asio::buffer(out.dump()));
         if (callback != nullptr) {
             (*callback)();
@@ -42,16 +71,16 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
         {
             std::ostringstream ss;
 
-            ss << boost::beast::make_printable(buffer_.data());
+            ss << beast::make_printable(buffer_->data());
 
-            buffer_.consume(buffer_.size());
+            buffer_->consume(buffer_->size());
             jres = json::parse(ss.str());
         }
 
         receivePayload(jres);
 
-        ws_->async_read(buffer_, [this](boost::system::error_code ec,
-                                        std::size_t bytes_transferred) {
+        ws_->async_read(*buffer_, [this](boost::system::error_code ec,
+                                         std::size_t bytes_transferred) {
             on_read(ec, bytes_transferred);
         });
     }
@@ -63,14 +92,30 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
     }
 
     virtual void connect() override {
-        // The SSL context is required, and holds certificates
-        ssl::context ctx{ssl::context::tlsv12};
-
-        // These objects perform our I/O
+        resolver_ = std::make_unique<tcp::resolver>(net::make_strand(*aioc));
+        ws_ = std::make_unique<
+            beast::websocket::stream<
+            beast::ssl_stream<beast::tcp_stream>>>(net::make_strand(*aioc),
+            ctx());
+        buffer_ = std::make_unique<beast::multi_buffer>();
+        
+        call(std::make_shared<std::string>("GET"),
+             std::make_shared<std::string>("/gateway/bot"), nullptr, nullptr,
+             std::make_shared<const handleRead>(
+                 [this](const bool error, const json &gateway) {
+                     if (error)
+                         return;
+                     host_ = gateway["url"].get<std::string>().substr(6);
+                     // Look up the domain name
+                     resolver_->async_resolve(
+                         host_, "443",
+                         [this](beast::error_code ec, tcp::resolver::results_type results){on_resolve(ec, results);});
+                 }));
+        /*// These objects perform our I/O
         resolver_ = std::make_unique<tcp::resolver>(*aioc);
         ws_ = std::make_unique<
             boost::beast::websocket::stream<ssl::stream<tcp::socket>>>(*aioc,
-                                                                       ctx);
+                                                                       ctx());
 
         connecting = true;
         call(std::make_shared<std::string>("GET"),
@@ -81,7 +126,7 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
                          return;
                      connecting = false;
                      std::cerr << gateway.dump(2) << std::endl;
-                     const std::string url =
+                     std::string url =
                          gateway["url"].get<std::string>().substr(6);
 
                      // Look up the domain name
@@ -89,8 +134,15 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
 
                      // Make the connection on the IP address we get from a
                      // lookup
-                     boost::asio::connect(ws_->next_layer().next_layer(),
-                                          results.begin(), results.end());
+                     ep_ =
+        std::make_unique<tcp::resolver::results_type::endpoint_type>(net::connect(boost::beast::get_lowest_layer(*ws_),
+                                       results));
+
+                     // Update the host_ string. This will provide the value of
+        the
+                     // Host HTTP header during the WebSocket handshake.
+                     // See https://tools.ietf.org/html/rfc7230#section-5.4
+                     url += ':' + std::to_string(ep_->port());
 
                      // Perform the SSL handshake
                      ws_->next_layer().handshake(ssl::stream_base::client);
@@ -101,31 +153,152 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
                                              std::to_string(apiVersion) +
                                              "&encoding=json");
 
-                     ws_->async_read(buffer_,
+                     connected_ = true;
+
+                     ws_->async_read(*buffer_,
                                      [this](boost::system::error_code ec,
                                             std::size_t bytes_transferred) {
                                          on_read(ec, bytes_transferred);
                                      });
-                 }));
+                 }));*/
     }
 
     virtual void disconnect() override {
-        try {
-            ws_->close(boost::beast::websocket::close_code::normal);
-        } catch (...) {
-        };
+        connected_ = false;
+
+        beast::error_code ec;
+        // Send a "close" frame to the other end, this is a websocket thing
+        ws_->close(beast::websocket::close_code::normal, ec);
+        if (ec)
+            return fail(ec, "close");
+
+        // The buffers() function helps print a ConstBufferSequence
+        std::cout << beast::make_printable(buffer_->data()) << std::endl;
+
+        // WebSocket says that to close a connection you have
+        // to keep reading messages until you receive a close frame.
+        // Beast delivers the close frame as an error from read.
+        //
+        beast::flat_buffer drain; // Throws everything away efficiently
+        for (;;) {
+            // Keep reading messages...
+            ws_->read(drain, ec);
+
+            // ...until we get the special error code
+            if (ec == beast::websocket::error::closed)
+                break;
+
+            // Some other error occurred, report it and exit.
+            if (ec)
+                return fail(ec, "close");
+        }
+
+        std::cerr << "Sleeping" << std::flush;
+        for (int i = 0; i < 3; i++) {
+            boost::asio::deadline_timer t(*aioc, boost::posix_time::seconds(1));
+            t.wait();
+            std::cerr << '.' << std::flush;
+        }
+        std::cerr << " Ok enough of that." << std::endl;
     }
 
   private:
+    void on_resolve(beast::error_code ec, tcp::resolver::results_type results) {
+        if (ec)
+            return fail(ec, "resolve");
+
+        // Set a timeout on the operation
+        beast::get_lowest_layer(*ws_).expires_after(std::chrono::seconds(30));
+
+        // Make the connection on the IP address we get from a lookup
+        beast::get_lowest_layer(*ws_).async_connect(
+            results, [this](beast::error_code ec,
+                            tcp::resolver::results_type::endpoint_type ep){on_connect(ec, ep);});
+    }
+
+    void on_connect(beast::error_code ec,
+                    tcp::resolver::results_type::endpoint_type ep) {
+        if (ec)
+            return fail(ec, "connect");
+
+        // Update the host_ string. This will provide the value of the
+        // Host HTTP header during the WebSocket handshake.
+        // See https://tools.ietf.org/html/rfc7230#section-5.4
+        host_ += ':' + std::to_string(ep.port());
+
+        // Set a timeout on the operation
+        beast::get_lowest_layer(*ws_).expires_after(std::chrono::seconds(30));
+
+        // Perform the SSL handshake
+        ws_->next_layer().async_handshake(
+            ssl::stream_base::client,
+            beast::bind_front_handler([this](beast::error_code ec){on_ssl_handshake(ec);}));
+    }
+
+    void on_ssl_handshake(beast::error_code ec) {
+        if (ec)
+            return fail(ec, "ssl_handshake");
+
+        // Turn off the timeout on the tcp_stream, because
+        // the websocket stream has its own timeout system.
+        beast::get_lowest_layer(*ws_).expires_never();
+
+        // Set suggested timeout settings for the websocket
+        ws_->set_option(beast::websocket::stream_base::timeout::suggested(
+            beast::role_type::client));
+
+        // Set a decorator to change the User-Agent of the handshake
+        ws_->set_option(
+            beast::websocket::stream_base::decorator([](beast::websocket::request_type &req) {
+                req.set(http::field::user_agent,
+                        std::string(BOOST_BEAST_VERSION_STRING) +
+                            " websocket-client-async-ssl");
+            }));
+
+        // Perform the websocket handshake
+        ws_->async_handshake(host_, "/" "?v=" +
+                                   std::to_string(apiVersion) +
+                                   "&encoding=json",
+                            [this](beast::error_code ec){on_handshake(ec);});
+    }
+    
+    void
+    on_handshake(beast::error_code ec)
+    {
+        if(ec)
+            return fail(ec, "handshake");
+        
+        // Start listening
+        ws_->async_read(*buffer_,
+            [this](boost::system::error_code ec,
+                   std::size_t bytes_transferred) {
+              on_read(ec, bytes_transferred);
+            });
+    }
+
     // Report a failure
     void fail(boost::system::error_code ec, char const *what) {
-        std::cerr << what << ": " << ec.message() << "\n";
+        std::cerr << "Beast Websocket failure: " << what << ": " << ec.message()
+                  << "\n";
+        if (!connected_)
+            return;
+        std::cerr << "Beast Websocket failure: " << what << ": " << ec.message()
+                  << "\n";
         reconnect();
     }
 
-    std::unique_ptr<boost::beast::websocket::stream<ssl::stream<tcp::socket>>>
+    /*std::unique_ptr<boost::beast::websocket::stream<ssl::stream<tcp::socket>>>
         ws_;
-    boost::beast::multi_buffer buffer_;
+    std::unique_ptr<tcp::resolver::results_type::endpoint_type>
+        ep_;
+    std::unique_ptr<boost::beast::multi_buffer> buffer_ =
+    std::make_unique<boost::beast::multi_buffer>();
+    std::unique_ptr<tcp::resolver> resolver_;*/
     std::unique_ptr<tcp::resolver> resolver_;
+    std::unique_ptr<beast::websocket::stream<
+                    beast::ssl_stream<beast::tcp_stream>>> ws_;
+    std::unique_ptr<beast::multi_buffer> buffer_;
+    std::string host_;
+    bool connected_ = false;
 };
 } // namespace discordpp
