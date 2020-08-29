@@ -163,43 +163,45 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
                  }));*/
     }
 
-    virtual void disconnect() override {
+    virtual void disconnect(const std::shared_ptr<std::function<void()>> after) override {
         connected_ = false;
-
-        beast::error_code ec;
-        // Send a "close" frame to the other end, this is a websocket thing
-        ws_->close(beast::websocket::close_code::normal, ec);
-        if (ec)
-            return fail(ec, "close");
-
-        // The buffers() function helps print a ConstBufferSequence
-        std::cout << beast::make_printable(buffer_->data()) << std::endl;
-
-        // WebSocket says that to close a connection you have
-        // to keep reading messages until you receive a close frame.
-        // Beast delivers the close frame as an error from read.
-        //
-        beast::flat_buffer drain; // Throws everything away efficiently
-        for (;;) {
-            // Keep reading messages...
-            ws_->read(drain, ec);
-
-            // ...until we get the special error code
-            if (ec == beast::websocket::error::closed)
-                break;
-
-            // Some other error occurred, report it and exit.
-            if (ec)
-                return fail(ec, "close");
-        }
-
-        std::cerr << "Sleeping" << std::flush;
-        for (int i = 0; i < 3; i++) {
-            boost::asio::deadline_timer t(*aioc, boost::posix_time::seconds(1));
-            t.wait();
-            std::cerr << '.' << std::flush;
-        }
-        std::cerr << " Ok enough of that." << std::endl;
+        
+        ws_->async_close(beast::websocket::close_code::normal, [this, after](beast::error_code ec){
+          if (ec)
+              fail(ec, "close");
+  
+          // The buffers() function helps print a ConstBufferSequence
+          std::cout << beast::make_printable(buffer_->data()) << std::endl;
+  
+          // WebSocket says that to close a connection you have
+          // to keep reading messages until you receive a close frame.
+          // Beast delivers the close frame as an error from read.
+          // However, Discord does not seem to send such a close frame.
+          beast::error_code dec;
+          beast::flat_buffer drain; // Throws everything away efficiently
+          do {
+              // Keep reading messages...
+              ws_->read(drain, dec);
+      
+              // ...until we get the special error code
+              /*if (dec == beast::websocket::error::closed)
+                  break;*/
+      
+              // Some other error occurred, report it and exit.
+              /*if (ec)
+                  return fail(dec, "drain");*/
+          } while(!dec);
+  
+          std::cerr << "Sleeping" << std::flush;
+          for (int i = 0; i < 3; i++) {
+              boost::asio::deadline_timer t(*aioc, boost::posix_time::seconds(1));
+              t.wait();
+              std::cerr << '.' << std::flush;
+          }
+          std::cerr << " Ok enough of that." << std::endl;
+          
+          (*after)();
+        });
     }
 
   private:
