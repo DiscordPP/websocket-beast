@@ -280,10 +280,11 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
 
     // Report a failure
     void fail(boost::system::error_code ec, char const *what) {
-        std::cerr << "Beast Websocket failure: " << what << ": " << ec.message()
-                  << "\n";
-        if (!connected_)
+        if (!connected_) {
+            std::cerr << "Beast Websocket failure: " << what << ": "
+                      << ec.message() << "\n But that was expected.\n";
             return;
+        }
         std::cerr << "Beast Websocket failure: " << what << ": " << ec.message()
                   << "\n";
         reconnect();
