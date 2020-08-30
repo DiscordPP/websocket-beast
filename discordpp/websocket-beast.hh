@@ -270,6 +270,8 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
         if(ec)
             return fail(ec, "handshake");
         
+        connected_ = true;
+        
         // Start listening
         ws_->async_read(*buffer_,
             [this](boost::system::error_code ec,
