@@ -64,7 +64,12 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
     void on_read(boost::system::error_code ec,
                  std::size_t /*bytes_transferred*/) {
         if (ec) {
-            return fail(ec, "read");
+            if(!connected_ && ec == beast::websocket::error::closed){
+                connect();
+                return;
+            }else{
+                return fail(ec, "read");
+            }
         }
 
         json jres;
@@ -163,10 +168,10 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
                  }));*/
     }
 
-    virtual void disconnect(const std::shared_ptr<std::function<void()>> after) override {
+    virtual void disconnect() override {
         connected_ = false;
         
-        ws_->async_close(beast::websocket::close_code::normal, [this, after](beast::error_code ec){
+        ws_->async_close(beast::websocket::close_code::normal, [this](beast::error_code ec){
           if (ec)
               fail(ec, "close");
   
@@ -177,19 +182,19 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
           // to keep reading messages until you receive a close frame.
           // Beast delivers the close frame as an error from read.
           // However, Discord does not seem to send such a close frame.
-          beast::error_code dec;
+          /*beast::error_code dec;
           beast::flat_buffer drain; // Throws everything away efficiently
           do {
               // Keep reading messages...
               ws_->read(drain, dec);
       
               // ...until we get the special error code
-              /*if (dec == beast::websocket::error::closed)
-                  break;*/
+              //if (dec == beast::websocket::error::closed)
+              //    break;
       
               // Some other error occurred, report it and exit.
-              /*if (ec)
-                  return fail(dec, "drain");*/
+              //if (ec)
+              //    return fail(dec, "drain");
           } while(!dec);
   
           std::cerr << "Sleeping" << std::flush;
@@ -200,7 +205,7 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
           }
           std::cerr << " Ok enough of that." << std::endl;
           
-          (*after)();
+          (*after)();*/
         });
     }
 
