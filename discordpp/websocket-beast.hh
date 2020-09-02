@@ -65,7 +65,7 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
                  std::size_t /*bytes_transferred*/) {
         reading_ = false;
         if (ec) {
-            if(!connected_ && ec == beast::websocket::error::closed){
+            if(!connected_/* && ec == beast::websocket::error::closed*/){
                 connect();
                 return;
             }else{
