@@ -63,6 +63,7 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
   protected:
     void on_read(boost::system::error_code ec,
                  std::size_t /*bytes_transferred*/) {
+        reading_ = false;
         if (ec) {
             if(!connected_ && ec == beast::websocket::error::closed){
                 connect();
@@ -83,7 +84,8 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
         }
 
         receivePayload(jres);
-
+    
+        reading_ = true;
         ws_->async_read(*buffer_, [this](boost::system::error_code ec,
                                          std::size_t bytes_transferred) {
             on_read(ec, bytes_transferred);
@@ -176,7 +178,11 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
               fail(ec, "close");
   
           // The buffers() function helps print a ConstBufferSequence
-          std::cout << beast::make_printable(buffer_->data()) << std::endl;
+          //std::cout << beast::make_printable(buffer_->data()) << std::endl;
+          
+          if(!reading_){
+              connect();
+          }
   
           // WebSocket says that to close a connection you have
           // to keep reading messages until you receive a close frame.
@@ -278,6 +284,7 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
         connected_ = true;
         
         // Start listening
+        reading_ = true;
         ws_->async_read(*buffer_,
             [this](boost::system::error_code ec,
                    std::size_t bytes_transferred) {
@@ -310,5 +317,6 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
     std::unique_ptr<beast::multi_buffer> buffer_;
     std::string host_;
     bool connected_ = false;
+    bool reading_ = false;
 };
 } // namespace discordpp
