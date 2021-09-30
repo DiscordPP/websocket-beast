@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <sstream>
+
 #include <boost/beast.hpp>
 #include <boost/beast/websocket/ssl.hpp>
 
@@ -20,11 +22,11 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
                       sptr<const handleSent> callback) override {
         json out{{"op", opcode},
                  {"d", ((payload == nullptr) ? json() : *payload)}};
-	    
+
         log::log(log::debug, [out](std::ostream *log) {
-		    *log << "Sending: " << out.dump(4) << '\n';
-	    });
-        
+            *log << "Sending: " << out.dump(4) << '\n';
+        });
+
         ws_->write(boost::asio::buffer(out.dump()));
         if (callback != nullptr) {
             (*callback)();
@@ -72,44 +74,44 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
             boost::beast::websocket::stream<ssl::stream<tcp::socket>>>(*aioc,
                                                                        ctx);
 
-        connecting = true;
-        call(std::make_shared<std::string>("GET"),
-             std::make_shared<std::string>("/gateway/bot"), nullptr, nullptr,
-             std::make_shared<const handleRead>(
-                 [this](const bool error, const json &gateway) {
-                     if (error)
-                         return;
-                     connecting = false;
-                     std::cerr << gateway.dump(2) << std::endl;
-                     const std::string url =
-                         gateway["url"].get<std::string>().substr(6);
+        connecting_ = true;
+        call()
+            ->method("GET")
+            ->target("/gateway/bot")
+            ->onRead([this](const bool error, const json &gateway) {
+                if (error)
+                    return;
+                connecting_ = false;
+                std::cerr << gateway.dump(2) << std::endl;
+                const std::string url =
+                    gateway["url"].get<std::string>().substr(6);
 
-                     // Look up the domain name
-                     auto const results = resolver_->resolve(url, "443");
+                // Look up the domain name
+                auto const results = resolver_->resolve(url, "443");
 
-                     // Make the connection on the IP address we get from a
-                     // lookup
-                     boost::asio::connect(ws_->next_layer().next_layer(),
-                                          results.begin(), results.end());
+                // Make the connection on the IP address we get from a
+                // lookup
+                boost::asio::connect(ws_->next_layer().next_layer(),
+                                     results.begin(), results.end());
 
-                     // Perform the SSL handshake
-                     ws_->next_layer().handshake(ssl::stream_base::client);
+                // Perform the SSL handshake
+                ws_->next_layer().handshake(ssl::stream_base::client);
 
-                     // Perform the websocket handshake
-                     ws_->handshake(url, "/"
-                                         "?v=" +
-                                             std::to_string(apiVersion) +
-                                             "&encoding=json");
+                // Perform the websocket handshake
+                ws_->handshake(url, "/"
+                                    "?v=" +
+                                        std::to_string(apiVersion) +
+                                        "&encoding=json");
 
-                     ws_->async_read(buffer_,
-                                     [this](boost::system::error_code ec,
-                                            std::size_t bytes_transferred) {
-                                         on_read(ec, bytes_transferred);
-                                     });
-                 }));
+                ws_->async_read(buffer_, [this](boost::system::error_code ec,
+                                                std::size_t bytes_transferred) {
+                    on_read(ec, bytes_transferred);
+                });
+            })
+            ->run();
     }
 
-    virtual void disconnect() override {
+    void disconnect() override {
         try {
             ws_->close(boost::beast::websocket::close_code::normal);
         } catch (...) {
@@ -119,8 +121,9 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
   private:
     // Report a failure
     void fail(boost::system::error_code ec, char const *what) {
-        std::cerr << what << ": " << ec.message() << "\n";
-        reconnect();
+        std::ostringstream error;
+        error << what << ": " << ec.message() << "\n";
+        reconnect(error.str());
     }
 
     std::unique_ptr<boost::beast::websocket::stream<ssl::stream<tcp::socket>>>

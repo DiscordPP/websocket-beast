@@ -1,11 +1,15 @@
-cmake_minimum_required(VERSION 3.6)
+cmake_minimum_required(VERSION 3.15)
 project(discordpp-websocket-beast)
 
 set(CMAKE_CXX_STANDARD 14)
 
 ###################
 
-add_library(${PROJECT_NAME} INTERFACE)
+list(PREPEND ALL_DISCORDPP_PLUGINS discordpp::WebsocketBeast)
+list(APPEND ALL_DISCORDPP_LIBRARIES discordpp-websocket-beast)
+set(ALL_DISCORDPP_LIBRARIES ${ALL_DISCORDPP_LIBRARIES} PARENT_SCOPE)
+set(ALL_DISCORDPP_PLUGINS ${ALL_DISCORDPP_PLUGINS} PARENT_SCOPE)
 
-INCLUDE_DIRECTORIES(${discordpp_SOURCE_DIR} ${json_SOURCE_DIR})
+add_library(${PROJECT_NAME} INTERFACE)
+target_include_directories(${PROJECT_NAME} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 TARGET_LINK_LIBRARIES(${PROJECT_NAME} INTERFACE)
