@@ -252,7 +252,6 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
     std::unique_ptr<beast::multi_buffer> buffer_;
     std::string host_;
     std::unique_ptr<ssl::context> ctx_;
-    bool connected_ = false;
     bool reading_ = false;
 };
 } // namespace discordpp
