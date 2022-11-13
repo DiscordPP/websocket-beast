@@ -49,7 +49,7 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
                  std::size_t /*bytes_transferred*/) {
         reading_ = false;
         if (ec) {
-            if (!connected_ /* && ec == beast::websocket::error::closed*/) {
+            if (!connected_) {
                 connect();
                 return;
             } else {
@@ -83,6 +83,7 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
     }
 
     virtual void connect() override {
+        reconnecting_ = false;
         resolver_ = std::make_unique<tcp::resolver>(net::make_strand(*aioc));
         ws_ = std::make_unique<
             beast::websocket::stream<beast::ssl_stream<beast::tcp_stream>>>(
@@ -108,49 +109,21 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
     }
 
     virtual void disconnect() override {
-        connected_ = false;
+        log::log(log::error, [](std::ostream *log) {
+            *log << "Disconnecting was started\n";
+        });
 
-        ws_->async_close(beast::websocket::close_code::normal,
-                         [this](beast::error_code ec) {
-                             if (ec) {
-                                 fail(ec, "close");
-                             }
+        BASE::disconnect();
+        beast::error_code ec;
+        // If we close connection with close code 1000 or 1001, our session would be invalidated.
+        // To be able to reconnect, we need to close connection with reason other than "normal" or "going away"
+        auto close_code{beast::websocket::close_code::service_restart};
+        if (!reconnecting_) close_code = beast::websocket::close_code::normal;
 
-                             if (!reading_) {
-                                 connect();
-                             }
-
-                             // WebSocket says that to close a connection you
-                             // have to keep reading messages until you receive
-                             // a close frame. Beast delivers the close frame as
-                             // an error from read. However, Discord does not
-                             // seem to send such a close frame.
-                             /*beast::error_code dec;
-                             beast::flat_buffer drain; // Throws everything away
-                             efficiently do {
-                                 // Keep reading messages...
-                                 ws_->read(drain, dec);
-
-                                 // ...until we get the special error code
-                                 //if (dec == beast::websocket::error::closed)
-                                 //    break;
-
-                                 // Some other error occurred, report it and
-                             exit.
-                                 //if (ec)
-                                 //    return fail(dec, "drain");
-                             } while(!dec);
-
-                             std::cerr << "Sleeping" << std::flush;
-                             for (int i = 0; i < 3; i++) {
-                                 boost::asio::deadline_timer t(*aioc,
-                             boost::posix_time::seconds(1)); t.wait(); std::cerr
-                             << '.' << std::flush;
-                             }
-                             std::cerr << " Ok enough of that." << std::endl;
-
-                             (*after)();*/
-                         });
+        ws_->close(close_code, ec);
+        if (ec) {
+            fail(ec, "close");
+        }
     }
 
   private:
@@ -164,9 +137,7 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
         // Make the connection on the IP address we get from a lookup
         beast::get_lowest_layer(*ws_).async_connect(
             results, [this](beast::error_code ec,
-                            tcp::resolver::results_type::endpoint_type ep) {
-                on_connect(ec, ep);
-            });
+                            tcp::resolver::results_type::endpoint_type ep) { on_connect(ec, ep); });
     }
 
     void on_connect(beast::error_code ec,
@@ -177,7 +148,8 @@ template <class BASE> class WebsocketBeast : public BASE, virtual BotStruct {
         // Update the host_ string. This will provide the value of the
         // Host HTTP header during the WebSocket handshake.
         // See https://tools.ietf.org/html/rfc7230#section-5.4
-        host_ += ':' + std::to_string(ep.port());
+        if(!host_.find(std::to_string(ep.port())))
+            host_ += ':' + std::to_string(ep.port());
 
         // Set a timeout on the operation
         beast::get_lowest_layer(*ws_).expires_after(std::chrono::seconds(30));
